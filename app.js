@@ -6,41 +6,49 @@ const main = async () => {
     try {
         console.clear();
         console.log("==================================================");
-        console.log("🚦  TP SIMULACIÓN: CRUCE CHUMBICHA (OPTIMIZADO) 🚦");
+        console.log("🚦  TP SIMULACIÓN: CRUCE CHUMBICHA (RANGO PERSONALIZADO) 🚦");
         console.log("==================================================\n");
 
         const config = await inquirer.prompt([
             {
                 type: 'number',
-                name: 'dias',
-                message: '1. ¿Cuántos días desea simular para la ESTADÍSTICA? (Ej: 50)',
+                name: 'diasTotales',
+                message: '1. ¿Cuántos días TOTALES desea simular para la estadística? (Ej: 50)',
                 default: 50,
             },
             {
                 type: 'confirm',
                 name: 'verDetalle',
-                message: '2. ¿Desea generar el Excel detallado de un rango específico?',
+                message: '2. ¿Desea generar Excel detallado de un rango específico?',
                 default: true
             },
+            // Configuración del Rango de Visualización
             {
                 type: 'number',
-                name: 'diaDetalle',
-                message: '   > ¿De qué día quiere ver el detalle? (Ej: 1)',
+                name: 'diaInicio',
+                message: '   > Día INICIO visualización (Ej: 1)',
                 default: 1,
                 when: (answers) => answers.verDetalle
             },
             {
                 type: 'number',
-                name: 'minutoInicio',
-                message: '   > ¿Desde qué minuto ver? (0 a 240)',
+                name: 'horaInicio',
+                message: '   > Hora del reloj INICIO (en segundos, 0 a 14400):',
                 default: 0,
                 when: (answers) => answers.verDetalle
             },
             {
                 type: 'number',
-                name: 'minutoFin',
-                message: '   > ¿Hasta qué minuto ver? (Ej: 10)',
-                default: 10,
+                name: 'diaFin',
+                message: '   > Día FIN visualización (Ej: 2, para ver el salto de día)',
+                default: 2,
+                when: (answers) => answers.verDetalle
+            },
+            {
+                type: 'number',
+                name: 'horaFin',
+                message: '   > Hora del reloj FIN (en segundos, ej: 1000):',
+                default: 1000, // Unos 16 minutos del segundo día
                 when: (answers) => answers.verDetalle
             }
         ]);
@@ -50,25 +58,27 @@ const main = async () => {
 
         const simulador = new Simulacion();
         
-        // Creamos el objeto filtro
+        // Objeto filtro más flexible
         const filtro = config.verDetalle ? {
-            dia: config.diaDetalle,
-            desdeSeg: config.minutoInicio * 60,
-            hastaSeg: config.minutoFin * 60
+            diaDesde: config.diaInicio,
+            segDesde: config.horaInicio,
+            diaHasta: config.diaFin,
+            segHasta: config.horaFin
         } : null;
 
-        const resultados = simulador.run(config.dias, filtro);
+        // Corremos la simulación
+        const resultados = simulador.run(config.diasTotales, filtro);
 
         const fin = Date.now();
         console.log(`✅ Simulación finalizada en ${((fin - inicio) / 1000).toFixed(2)} segundos.`);
-        console.log(`📊 Filas a exportar: ${resultados.length}`);
+        console.log(`📊 Filas capturadas para Excel: ${resultados.length}`);
         
         if (resultados.length > 0) {
             console.log("💾 Generando Excel...");
             const nombreArchivo = generarExcel(resultados);
             console.log(`\n🚀 ¡LISTO! Archivo: ${nombreArchivo}`);
         } else {
-            console.log("⚠️ No hay datos para exportar.");
+            console.log("⚠️ No hay datos para exportar en ese rango.");
         }
 
     } catch (error) {

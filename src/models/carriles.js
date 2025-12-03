@@ -13,6 +13,7 @@ export default class Carriles {
         this.autosAtendidos = []
     }
 
+
     llegadaVehiculo(reloj, semaforoEnVerde, generadorTiempo) {
         const nuevoAuto = new vehiculos(this.contadorIds++, reloj)
 
@@ -85,7 +86,12 @@ export default class Carriles {
     }
 
     getEstadoServidores() {
-        return this.servidores.map(car => car ? `Auto ${car.id}` : '-' )
+       return this.servidores.map(auto => {
+            if (!auto) return "-";
+            // Reemplazamos punto por coma para el decimal
+            const finFormateado = auto.horaFinCruce.toFixed(2).replace('.', ',');
+            return `Auto ${auto.id} - ${finFormateado}`;
+        })
     }
 
     getAutosActivos() {
