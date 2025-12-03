@@ -33,6 +33,9 @@ export default class VectorEstado {
         this.contadorAutosColon = 0
         this.tiempoPermanenciaUrquiza = 0
         this.tiempoPermanenciaColon = 0
+
+        // 5. Objetos temporales
+        this.vehiculosActivos = []
     }
 
     clone() {
@@ -42,6 +45,8 @@ export default class VectorEstado {
 
         clon.finCruceUrquiza = [...this.finCruceUrquiza]
         clon.finCruceColon = [...this.finCruceColon]
+
+        clon.vehiculosActivos = this.vehiculosActivos.map(v => ({...v}))
 
         return clon
     }

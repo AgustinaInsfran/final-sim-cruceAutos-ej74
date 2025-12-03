@@ -4,57 +4,76 @@ import Semaforo from "../models/semaforo.js";
 import VectorEstado from "./vectorEstado.js";
 import * as Randomizer from "../utils/randomizer.js";
 
-
 export default class Simulacion {
     constructor() {
-        // 1. Inicializar modelos
         this.semaforo = new Semaforo();
-
-        // Inicializo carriles
         this.carrilesUrquiza = new Carriles('Urquiza', parametros.autos.urquiza.capacidad_cruce);
         this.carrilesColon = new Carriles('Colón', parametros.autos.colon.capacidad_cruce);
 
-        // Estado y resultados 
         this.vectorEstado = new VectorEstado();
         this.resultados = [];
+        
+        // *** OPTIMIZACIÓN: Usar MAP en lugar de Array ***
+        // El Map permite borrar autos instantáneamente por su ID.
+        // El Array tardaba milisegundos en buscar y borrar, lo que sumado millones de veces trababa todo.
+        this.todosLosVehiculos = new Map(); 
+
+        this.acumuladorTiempoPermanencia = 0;
+        this.totalAutosSalieron = 0;
     }
 
-    run(diasASimular) {
-        console.log(`Iniciando simulación de ${diasASimular} días...`);
+    run(diasASimular, filtro) {
+        console.log(`   (Simulando ${diasASimular} días...)`);
         const max_tiempo = parametros.simulacion.duracion_segundos;
 
         for (let dia = 1; dia <= diasASimular; dia++) {
             this.vectorEstado.reloj = 0;
-
-            // Configuración inicial del día
             this.inicializarDia(dia, max_tiempo);
 
-            while (this.vectorEstado.reloj < max_tiempo) {
-                // 1. Buscar evento
-                const proximoEvento = this.buscarSiguienteEvento();
+            // *** REGLA 1: Guardar Inicialización ***
+            if (dia === 1) {
+                this.actualizarVisualizacionVehiculos();
+                const filaInit = this.vectorEstado.clone();
+                filaInit.dia = dia;
+                filaInit.evento = "Inicialización";
+                this.resultados.push(filaInit);
+            }
 
-                // 2. Avanzar reloj
+            while (this.vectorEstado.reloj < max_tiempo) {
+                const proximoEvento = this.buscarSiguienteEvento();
                 this.vectorEstado.reloj = proximoEvento.tiempo;
                 this.vectorEstado.evento = proximoEvento.nombre;
-
                 this.vectorEstado.resetearRND();
 
-                // 3. Lógica
                 this.procesarEvento(proximoEvento);
 
-                // 4. Guardar
-                const filaGuardada = this.vectorEstado.clone();
-                filaGuardada.dia = dia;
-                this.resultados.push(filaGuardada);
+                // *** REGLA 2: Guardar si cumple filtro ***
+                let guardar = false;
+                if (filtro && dia === filtro.dia) {
+                    if (this.vectorEstado.reloj >= filtro.desdeSeg && this.vectorEstado.reloj <= filtro.hastaSeg) {
+                        guardar = true;
+                    }
+                }
+
+                if (guardar) {
+                    this.actualizarVisualizacionVehiculos();
+                    const fila = this.vectorEstado.clone();
+                    fila.dia = dia;
+                    this.resultados.push(fila);
+                }
             }
+            if (dia % 10 === 0) process.stdout.write(`.`); 
         }
+        
+        console.log("\n");
+        // *** REGLA 3: Guardar Estadísticas Finales ***
+        this.agregarFilaResumen();
         return this.resultados;
     }
 
     inicializarDia(dia, duracionDiaAnterior) {
         this.vectorEstado.resetearRND();
-
-        // Llegadas
+        
         const llegadaUrq = Randomizer.getLlegadaUrquiza();
         this.vectorEstado.rndLlegadaUrquiza = llegadaUrq.rnd;
         this.vectorEstado.tiempoEntreLlegadasUrquiza = llegadaUrq.valor;
@@ -65,10 +84,10 @@ export default class Simulacion {
         this.vectorEstado.tiempoEntreLlegadasColon = llegadaCol.valor;
         this.vectorEstado.proxLlegadaColon = this.vectorEstado.reloj + llegadaCol.valor;
 
-        // Semáforo
         if (dia === 1) {
             this.semaforo.setEstado('VERDE_URQUIZA'); 
-            this.vectorEstado.estadoSemaforo = parametros.semaforo.urquiza.verde;
+            this.vectorEstado.estadoSemaforo = 'VERDE_URQUIZA'; 
+            this.vectorEstado.proxFinSemaforo = parametros.semaforo.urquiza.verde;
         } else {
             this.vectorEstado.estadoSemaforo = this.semaforo.estadoActual;
             this.vectorEstado.proxFinSemaforo = this.vectorEstado.proxFinSemaforo - duracionDiaAnterior;
@@ -76,7 +95,6 @@ export default class Simulacion {
 
         this.ajustarTiempoServidores(this.carrilesUrquiza, duracionDiaAnterior);
         this.ajustarTiempoServidores(this.carrilesColon, duracionDiaAnterior);
-
         this.actualizarVector();
     }
 
@@ -94,9 +112,7 @@ export default class Simulacion {
             if (auto) candidatos.push({ tiempo: auto.horaFinCruce, nombre: `FIN_CRUCE_COLON_${index}` });
         });
 
-        
         candidatos.sort((a, b) => a.tiempo - b.tiempo);
-        
         return candidatos[0];
     }
 
@@ -113,6 +129,10 @@ export default class Simulacion {
                     this.semaforo.isUrquizaVerde(),
                     Randomizer.getCruceUrquiza
                 );
+                
+                const ultimoAutoU = this.obtenerUltimoAuto(this.carrilesUrquiza);
+                // MAP SET
+                if(ultimoAutoU) this.todosLosVehiculos.set(ultimoAutoU.id, ultimoAutoU);
 
                 if (resCruceU) {
                     this.vectorEstado.rndCruceUrquiza = resCruceU.rnd;
@@ -132,6 +152,10 @@ export default class Simulacion {
                     this.semaforo.isColonVerde(),
                     Randomizer.getCruceColon
                 );
+                
+                const ultimoAutoC = this.obtenerUltimoAuto(this.carrilesColon);
+                // MAP SET
+                if(ultimoAutoC) this.todosLosVehiculos.set(ultimoAutoC.id, ultimoAutoC);
 
                 if (resCruceC) {
                     this.vectorEstado.rndCruceColon = resCruceC.rnd;
@@ -143,52 +167,83 @@ export default class Simulacion {
             case evento.nombre === 'FIN_SEMAFORO':
                 const sig = this.semaforo.getSiguienteEstado();
                 this.semaforo.setEstado(sig.estado);
-
                 this.vectorEstado.estadoSemaforo = sig.estado;
                 this.vectorEstado.proxFinSemaforo = this.vectorEstado.reloj + sig.duracion;
-
                 this.intentarIngresoDesdeCola();
                 break;
 
             case evento.nombre.startsWith('FIN_CRUCE_URQUIZA'):
                 const idxU = parseInt(evento.nombre.split('_')[3]);
-                
+                const autoSalienteU = this.carrilesUrquiza.servidores[idxU];
                 
                 const LibUrq = this.carrilesUrquiza.liberarServidor(
-                    idxU,
-                    this.vectorEstado.reloj,
-                    this.semaforo.isUrquizaVerde(), 
-                    Randomizer.getCruceUrquiza
+                    idxU, this.vectorEstado.reloj, this.semaforo.isUrquizaVerde(), Randomizer.getCruceUrquiza
                 );
-
                 if (LibUrq) {
                     this.vectorEstado.rndCruceUrquiza = LibUrq.rnd;
                     this.vectorEstado.tiempoCruceUrquiza = LibUrq.tiempoCruce;
                 }
-
+                if (autoSalienteU) {
+                    this.eliminarVehiculoDeLista(autoSalienteU.id);
+                    this.acumuladorTiempoPermanencia += (this.vectorEstado.reloj - autoSalienteU.horaLlegada);
+                    this.totalAutosSalieron++;
+                }
                 this.vectorEstado.colaUrquiza = this.carrilesUrquiza.cola.length;
                 this.vectorEstado.contadorAutosUrquiza++;
                 break;
 
             case evento.nombre.startsWith('FIN_CRUCE_COLON'):
                 const idxC = parseInt(evento.nombre.split('_')[3]);
+                const autoSalienteC = this.carrilesColon.servidores[idxC];
+                
                 const LibCol = this.carrilesColon.liberarServidor(
-                    idxC,
-                    this.vectorEstado.reloj,
-                    this.semaforo.isColonVerde(),
-                    Randomizer.getCruceColon
+                    idxC, this.vectorEstado.reloj, this.semaforo.isColonVerde(), Randomizer.getCruceColon
                 );
-
                 if (LibCol) {
                     this.vectorEstado.rndCruceColon = LibCol.rnd;
                     this.vectorEstado.tiempoCruceColon = LibCol.tiempoCruce;
                 }
-
+                if (autoSalienteC) {
+                    this.eliminarVehiculoDeLista(autoSalienteC.id);
+                    this.acumuladorTiempoPermanencia += (this.vectorEstado.reloj - autoSalienteC.horaLlegada);
+                    this.totalAutosSalieron++;
+                }
                 this.vectorEstado.colaColon = this.carrilesColon.cola.length;
                 this.vectorEstado.contadorAutosColon++;
                 break;
         }
         this.actualizarVector();
+    }
+    
+    obtenerUltimoAuto(carril) {
+        if (carril.cola.length > 0) return carril.cola[carril.cola.length - 1]; 
+        return carril.servidores.find(a => a && a.horaLlegada === this.vectorEstado.reloj);
+    }
+
+    eliminarVehiculoDeLista(id) {
+        // MAP DELETE: O(1) - Instantáneo
+        this.todosLosVehiculos.delete(id);
+    }
+
+    actualizarVisualizacionVehiculos() {
+        // Convertimos el MAP a ARRAY solo cuando necesitamos visualizar
+        this.vectorEstado.vehiculosActivos = Array.from(this.todosLosVehiculos.values()).map(v => ({
+            id: v.id,
+            estado: v.estado
+        }));
+    }
+
+    agregarFilaResumen() {
+        const promedio = this.totalAutosSalieron > 0 
+            ? (this.acumuladorTiempoPermanencia / this.totalAutosSalieron).toFixed(2) 
+            : 0;
+
+        this.resultados.push({ dia: '', reloj: '', evento: '' }); 
+
+        const resumen = new VectorEstado();
+        resumen.evento = "ESTADÍSTICAS FINALES (50 DÍAS)";
+        resumen.resumenTexto = `Tiempo Promedio Permanencia: ${promedio} seg`;
+        this.resultados.push(resumen);
     }
 
     actualizarVector() {
@@ -218,10 +273,9 @@ export default class Simulacion {
     llenarServidoresVacios(carriles, generadorCruce) {
         let idxLibre;
         while (carriles.cola.length > 0 && (idxLibre = carriles.buscarServidorLibre()) !== -1) {
-            const auto = carriles.cola.shift(); // Saco el objeto Auto real
+            const auto = carriles.cola.shift(); 
             const tiempoCruce = generadorCruce();
-            
-            auto.cruzar(this.vectorEstado.reloj, tiempoCruce.valor); // .valor porque ahora devuelve objeto
+            auto.cruzar(this.vectorEstado.reloj, tiempoCruce.valor); 
             carriles.servidores[idxLibre] = auto;
         }
     }

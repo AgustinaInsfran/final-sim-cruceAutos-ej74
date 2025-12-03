@@ -87,4 +87,34 @@ export default class Carriles {
     getEstadoServidores() {
         return this.servidores.map(car => car ? `Auto ${car.id}` : '-' )
     }
+
+    getAutosActivos() {
+        const activos = []
+
+        // Autos en cola 
+        this.cola.forEach(a => {
+            activos.push({
+                id: a.id,
+                estado: a.estado || 'EN_COLA',
+                horaLlegada: a.horaLlegada ?? null,
+                horaInicioCruce: a.horaInicioCruce ?? null,
+                horaFinCruce: a.horaFinCruce ?? null
+            })
+        })
+
+        // Autos en servidores 
+        this.servidores.forEach(a => {
+            if (a) {
+                activos.push({
+                    id: a.id,
+                    estado: a.estado || 'CRUZANDO',
+                    horaLlegada: a.horaLlegada ?? null,
+                    horaInicioCruce: a.horaInicioCruce ?? null,
+                    horaFinCruce: a.horaFinCruce ?? null
+                })
+            }
+        })
+
+        return activos
+    }
 }

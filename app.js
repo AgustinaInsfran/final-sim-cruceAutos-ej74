@@ -4,52 +4,75 @@ import Simulacion from './src/core/simulacion.js';
 
 const main = async () => {
     try {
-        // Limpiamos la consola para que se vea prolijo
         console.clear();
-        console.log("===========================================");
-        console.log("🚦  TP SIMULACIÓN: TRÁNSITO EN CHUMBICHA  🚦");
-        console.log("===========================================\n");
+        console.log("==================================================");
+        console.log("🚦  TP SIMULACIÓN: CRUCE CHUMBICHA (OPTIMIZADO) 🚦");
+        console.log("==================================================\n");
 
-        // 1. Preguntar configuración al usuario (Días a simular)
-        const respuestas = await inquirer.prompt([
+        const config = await inquirer.prompt([
             {
                 type: 'number',
                 name: 'dias',
-                message: '¿Cuántos días desea simular?',
+                message: '1. ¿Cuántos días desea simular para la ESTADÍSTICA? (Ej: 50)',
                 default: 50,
-                validate: (value) => {
-                    if (value > 0) return true;
-                    return 'Por favor ingresa un número mayor a 0.';
-                }
+            },
+            {
+                type: 'confirm',
+                name: 'verDetalle',
+                message: '2. ¿Desea generar el Excel detallado de un rango específico?',
+                default: true
+            },
+            {
+                type: 'number',
+                name: 'diaDetalle',
+                message: '   > ¿De qué día quiere ver el detalle? (Ej: 1)',
+                default: 1,
+                when: (answers) => answers.verDetalle
+            },
+            {
+                type: 'number',
+                name: 'minutoInicio',
+                message: '   > ¿Desde qué minuto ver? (0 a 240)',
+                default: 0,
+                when: (answers) => answers.verDetalle
+            },
+            {
+                type: 'number',
+                name: 'minutoFin',
+                message: '   > ¿Hasta qué minuto ver? (Ej: 10)',
+                default: 10,
+                when: (answers) => answers.verDetalle
             }
         ]);
 
         console.log("\n🔄 Inicializando motor de simulación...");
         const inicio = Date.now();
 
-        // 2. Instanciar y Correr Simulación
         const simulador = new Simulacion();
         
-        // Ejecutamos el método run pasando los días elegidos
-        const resultados = simulador.run(respuestas.dias);
+        // Creamos el objeto filtro
+        const filtro = config.verDetalle ? {
+            dia: config.diaDetalle,
+            desdeSeg: config.minutoInicio * 60,
+            hastaSeg: config.minutoFin * 60
+        } : null;
+
+        const resultados = simulador.run(config.dias, filtro);
 
         const fin = Date.now();
-        const tiempoTotal = ((fin - inicio) / 1000).toFixed(2);
-
-        console.log(`✅ Simulación finalizada en ${tiempoTotal} segundos.`);
-        console.log(`📊 Se generaron ${resultados.length} filas de eventos.`);
-        console.log("💾 Generando reporte Excel...");
-
-        // 3. Exportar a Excel
-        const nombreArchivo = generarExcel(resultados);
-
-        console.log("\n===========================================");
-        console.log(`🚀 ¡LISTO! Abre el archivo: ${nombreArchivo}`);
-        console.log("===========================================\n");
+        console.log(`✅ Simulación finalizada en ${((fin - inicio) / 1000).toFixed(2)} segundos.`);
+        console.log(`📊 Filas a exportar: ${resultados.length}`);
+        
+        if (resultados.length > 0) {
+            console.log("💾 Generando Excel...");
+            const nombreArchivo = generarExcel(resultados);
+            console.log(`\n🚀 ¡LISTO! Archivo: ${nombreArchivo}`);
+        } else {
+            console.log("⚠️ No hay datos para exportar.");
+        }
 
     } catch (error) {
-        console.error("\n❌ Ocurrió un error inesperado:");
-        console.error(error);
+        console.error("\n❌ Error:", error);
     }
 };
 
